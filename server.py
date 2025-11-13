@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 import sqlite3 
 from datetime import date
+from response import success_response, not_found
+from constants import SQL_GET_ALL_USERS, SQL_DELETE_USER, SQL_GET_USER_BY_ID, SQL_INSERT_USER, SQL_UPDATE_USER, SQL_GET_ALL_EXPENSES, SQL_GET_EXPENSES_BY_ID, SQL_INSERT_EXPENSE, SQL_GET_EXPENSES_AND_USERNAME_BY_USER_ID, SQL_DELETE_EXPENSE, SQL_UPDATE_EXPENSE, SQL_GET_USER_BY_USERNAME
 
 app = Flask(__name__)
 
@@ -36,7 +38,7 @@ def init_db():
     conn.commit() # save changes to the db
     conn.close() #close the connection to the db
 
-
+# register user
 @app.post("/api/register")
 def register():
     data = request.get_json()
@@ -45,7 +47,7 @@ def register():
     
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+    cursor.execute(SQL_INSERT_USER, (username, password))
 
     conn.commit()
     conn.close()
@@ -55,6 +57,7 @@ def register():
         "message": "User successfully registered"
     }), 201
 
+# user login
 @app.post("/api/login")
 def login():
     data = request.get_json()
@@ -81,29 +84,21 @@ def login():
         "message": "Invalid Credentials"
     }), 401 #UNAUTHORIZED
 
-
+# get user by id
 @app.get("/api/users/<int:user_id>")
 def get_user_by_id(user_id):
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    cursor.execute(SQL_GET_USER_BY_ID, (user_id,))
     user = cursor.fetchone()
     conn.close()
 
     if user:
-        return jsonify({
-            "success": True,
-            "message": "User found",
-            "user_id": user["id"],
-            "username": user["username"]
-        }), 201
+        return success_response("User Found", dict(user))
     
-    return jsonify({
-        "success": False,
-        "message": "User not found",
-    }), 404
+    return not_found("User")
 
 # get all users
 @app.get("/api/users")
@@ -111,7 +106,7 @@ def get_users():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users")
+    cursor.execute(SQL_GET_ALL_USERS)
     rows = cursor.fetchall()
     conn.close()
 
@@ -125,12 +120,9 @@ def get_users():
         }
         users.append(user)
 
-    return jsonify({
-        "success": True,
-        "message": "Users retrieved successfully",
-        "data": users
-    }), 200
+    return success_response("Users retrieved successfully", users)
 
+# update users
 @app.put("/api/users/<int:user_id>")
 def update_user(user_id):
 
@@ -139,46 +131,44 @@ def update_user(user_id):
     password = data.get("password")
 
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    cursor.execute(SQL_GET_USER_BY_ID, (user_id,))
     if not cursor.fetchone():
         conn.close()
-        return jsonify({
-        "success": False,
-        "message": "User not found"
-        }), 404
+        return not_found("User")
+    
+     # check if the username already exists (and isn't this user)
+    cursor.execute(SQL_GET_USER_BY_USERNAME, (username,))
+    row = cursor.fetchone()
+    if row and row["id"] != user_id:
+        conn.close()
+        return jsonify(({
+            "success": False,
+            "message": "That username already exists"
+        }))
 
-    cursor.execute("UPDATE users SET username = ?, password = ? WHERE id = ?", (username, password, user_id))
+    cursor.execute(SQL_UPDATE_USER, (username, password, user_id))
     conn.commit()
     conn.close()
-    
-    return jsonify({
-        "success": True,
-        "message": "The user was successfully updated",
-        "username": username
-    }), 200
+
+    return success_response("The user was successfully updated", username)
 
 @app.delete("/api/users/<int:user_id>")
 def delete_users(user_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    cursor.execute(SQL_GET_USER_BY_ID, (user_id,))
     if not cursor.fetchone():
         conn.close()
-        return jsonify ({
-        "success": False,
-        "message": "User not found"
-        }), 404
+        return not_found("User")
 
-    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    cursor.execute(SQL_DELETE_USER, (user_id,))
     conn.commit()
     conn.close()
 
-    return jsonify ({
-        "success": True,
-        "message": "User successfully deleted"
-    }), 200
+    return success_response("User Deleted Successfully")
 
 # -------  Expenses -----------
 
@@ -189,7 +179,7 @@ def get_expenses():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM expenses")
+    cursor.execute(SQL_GET_ALL_EXPENSES)
     rows = cursor.fetchall()
     conn.close()
 
@@ -219,15 +209,12 @@ def get_expense_by_id(expense_id):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+    cursor.execute(SQL_GET_EXPENSES_BY_ID, (expense_id,))
     expense = cursor.fetchone()
     conn.close()
 
     if not expense:
-        return jsonify({
-            "success": False,
-            "message": "Expense not found"
-        }), 404
+        return not_found("Expense")
 
     return jsonify({
         "success": True,
@@ -259,7 +246,7 @@ def create_expense():
     cursor = conn.cursor()
 
     # check to see if the user id exists before allowing the post
-    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    cursor.execute(SQL_GET_USER_BY_ID, (user_id,))
     user = cursor.fetchone()
     if not user:
         conn.close()
@@ -268,10 +255,7 @@ def create_expense():
             "message": "User ID does not exist"
         }), 400   
     
-    cursor.execute("""
-        INSERT INTO expenses (title, description, amount, date, category, user_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (title, description, amount, today, category, user_id))
+    cursor.execute(SQL_INSERT_EXPENSE, (title, description, amount, today, category, user_id))
 
     conn.commit()
     conn.close()
@@ -297,19 +281,12 @@ def update_expense(expense_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+    cursor.execute(SQL_GET_EXPENSES_BY_ID, (expense_id,))
     if not cursor.fetchone():
         conn.close()
-        return jsonify({
-            "success": False,
-            "message": "Expense not found"
-        }), 404
+        return not_found("Expense")
 
-    cursor.execute("""
-        UPDATE expenses 
-        SET title = ?, description = ?, amount = ?, date = ?, category = ?, user_id = ?
-        WHERE id = ?
-    """, (title, description, amount, date, category, user_id, expense_id))
+    cursor.execute(SQL_UPDATE_EXPENSE, (title, description, amount, date, category, user_id, expense_id))
 
     conn.commit()
     conn.close()
@@ -326,21 +303,13 @@ def get_expenses_by_user(user_id):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT expenses.*, users.username
-        FROM expenses
-        JOIN users ON expenses.user_id = users.id
-        WHERE expenses.user_id = ?
-    """, (user_id,))
+    cursor.execute(SQL_GET_EXPENSES_AND_USERNAME_BY_USER_ID, (user_id,))
 
     rows = cursor.fetchall()
     conn.close()
 
     if not rows:
-        return jsonify({
-            "success": False,
-            "message": "No expenses found for this user"
-        }), 404
+        return not_found("Expense for that user")
 
     expenses = []
     for row in rows:
@@ -366,15 +335,12 @@ def delete_expense(expense_id):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+    cursor.execute(SQL_GET_EXPENSES_BY_ID, (expense_id,))
     if not cursor.fetchone():
         conn.close()
-        return jsonify({
-            "success": False,
-            "message": "Expense not found"
-        }), 404
+        return not_found("Expense")
 
-    cursor.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+    cursor.execute(SQL_DELETE_EXPENSE, (expense_id,))
     conn.commit()
     conn.close()
 

@@ -51,9 +51,8 @@ SQL_DELETE_EXPENSE = """
 DELETE FROM expenses
 WHERE id=?
 """
-SQL_GET_EXPENSES_AND_USERNAME_BY_USER_ID = """
-SELECT expenses.*, users.username
+SQL_GET_EXPENSES_BY_USER_ID = """
+SELECT *
 FROM expenses
-JOIN users ON expenses.user_id = users.id
-WHERE expenses.user_id = ?
+WHERE user_id = ?
 """

@@ -2,7 +2,7 @@ from flask import Flask, jsonify, request
 import sqlite3 
 from datetime import date
 from response import success_response, not_found
-from constants import SQL_GET_ALL_USERS, SQL_DELETE_USER, SQL_GET_USER_BY_ID, SQL_INSERT_USER, SQL_UPDATE_USER, SQL_GET_ALL_EXPENSES, SQL_GET_EXPENSES_BY_ID, SQL_INSERT_EXPENSE, SQL_GET_EXPENSES_AND_USERNAME_BY_USER_ID, SQL_DELETE_EXPENSE, SQL_UPDATE_EXPENSE, SQL_GET_USER_BY_USERNAME
+from constants import SQL_GET_ALL_USERS, SQL_DELETE_USER, SQL_GET_USER_BY_ID, SQL_INSERT_USER, SQL_UPDATE_USER, SQL_GET_ALL_EXPENSES, SQL_GET_EXPENSES_BY_ID, SQL_INSERT_EXPENSE, SQL_GET_EXPENSES_BY_USER_ID, SQL_DELETE_EXPENSE, SQL_UPDATE_EXPENSE, SQL_GET_USER_BY_USERNAME
 
 app = Flask(__name__)
 
@@ -172,20 +172,59 @@ def delete_users(user_id):
 
 # -------  Expenses -----------
 
-# Get all expenses
+# # Get all expenses
+# @app.get("/api/expenses")
+# def get_expenses():
+#     conn = sqlite3.connect(DB_NAME)
+#     conn.row_factory = sqlite3.Row
+#     cursor = conn.cursor()
+
+#     cursor.execute(SQL_GET_ALL_EXPENSES)
+#     rows = cursor.fetchall()
+#     conn.close()
+
+#     expenses = []
+#     for row in rows:
+#         expense = {
+#             "id": row["id"],
+#             "title": row["title"],
+#             "description": row["description"],
+#             "amount": row["amount"],
+#             "date": row["date"],
+#             "category": row["category"],
+#             "user_id": row["user_id"]
+#         }
+#         expenses.append(expense)
+
+#     return jsonify({
+#         "success": True,
+#         "message": "Expenses retrieved successfully",
+#         "data": expenses
+#     }), 200
+
+
+# Get all expenses (query parameters)
 @app.get("/api/expenses")
-def get_expenses():
+def get_expenses_by_user():
+    user_id = request.args.get('user_id')
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute(SQL_GET_ALL_EXPENSES)
+    if user_id:
+        cursor.execute(SQL_GET_EXPENSES_BY_USER_ID, (user_id,))
+    else:
+        cursor.execute(SQL_GET_ALL_EXPENSES)
+
     rows = cursor.fetchall()
     conn.close()
 
+    if not rows:
+        return not_found("Expense for that user")
+
     expenses = []
     for row in rows:
-        expense = {
+        expenses.append({
             "id": row["id"],
             "title": row["title"],
             "description": row["description"],
@@ -193,41 +232,12 @@ def get_expenses():
             "date": row["date"],
             "category": row["category"],
             "user_id": row["user_id"]
-        }
-        expenses.append(expense)
+        })
 
     return jsonify({
         "success": True,
         "message": "Expenses retrieved successfully",
         "data": expenses
-    }), 200
-
-# Get an expense by ID
-@app.get("/api/expenses/<int:expense_id>")
-def get_expense_by_id(expense_id):
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute(SQL_GET_EXPENSES_BY_ID, (expense_id,))
-    expense = cursor.fetchone()
-    conn.close()
-
-    if not expense:
-        return not_found("Expense")
-
-    return jsonify({
-        "success": True,
-        "message": "Expense found",
-        "data": {
-            "id": expense["id"],
-            "title": expense["title"],
-            "description": expense["description"],
-            "amount": expense["amount"],
-            "date": expense["date"],
-            "category": expense["category"],
-            "user_id": expense["user_id"]
-        }
     }), 200
 
 # Create a new expense 
@@ -296,38 +306,6 @@ def update_expense(expense_id):
         "message": "Expense successfully updated"
     }), 200
 
-# Get all expenses for a certain user by user ID
-@app.get("/api/users/<int:user_id>/expenses")
-def get_expenses_by_user(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute(SQL_GET_EXPENSES_AND_USERNAME_BY_USER_ID, (user_id,))
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
-        return not_found("Expense for that user")
-
-    expenses = []
-    for row in rows:
-        expenses.append({
-            "id": row["id"],
-            "title": row["title"],
-            "description": row["description"],
-            "amount": row["amount"],
-            "date": row["date"],
-            "category": row["category"],
-            "username": row["username"] 
-        })
-
-    return jsonify({
-        "success": True,
-        "message": "Expenses retrieved successfully",
-        "data": expenses
-    }), 200
 
 # Delete an expense by expense ID
 @app.delete("/api/expenses/<int:expense_id>")
@@ -344,10 +322,7 @@ def delete_expense(expense_id):
     conn.commit()
     conn.close()
 
-    return jsonify({
-        "success": True,
-        "message": "Expense successfully deleted"
-    }), 200
+    return success_response("Expense successfully deleted")
 
 @app.get("/api/health")
 def health_check():
